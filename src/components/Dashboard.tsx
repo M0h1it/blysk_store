@@ -336,7 +336,11 @@ export const Dashboard: React.FC = () => {
                         <Cell key={i} fill={PAY_COLORS[e.type] ?? CAT_COLORS[i % CAT_COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v: number) => inr(v)} />
+                    <Tooltip
+  formatter={(value) =>
+    typeof value === "number" ? inr(value) : String(value)
+  }
+/>
                   </PieChart>
                 </ResponsiveContainer>
               )}
@@ -348,7 +352,11 @@ export const Dashboard: React.FC = () => {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="store" />
                     <YAxis />
-                    <Tooltip formatter={(v: number) => inr(v)} />
+                    <Tooltip
+  formatter={(value) =>
+    typeof value === "number" ? inr(value) : String(value)
+  }
+/>
                     <Bar dataKey="revenue" name="Revenue (₹)" radius={[4, 4, 0, 0]}>
                       {revenueByStore.map((_e, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
                     </Bar>
@@ -370,7 +378,11 @@ export const Dashboard: React.FC = () => {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="category" />
                   <YAxis />
-                  <Tooltip formatter={(v: number) => inr(v)} />
+                  <Tooltip
+  formatter={(value) =>
+    typeof value === "number" ? inr(value) : String(value)
+  }
+/>
                   <Bar dataKey="value" name="Sales (₹)" radius={[4, 4, 0, 0]}>
                     {salesByCategory.map((_e, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
                   </Bar>
@@ -572,7 +584,11 @@ const TrendChart: React.FC<{ data: { label: string; value: number }[]; name: str
       <CartesianGrid strokeDasharray="3 3" />
       <XAxis dataKey="label" />
       <YAxis />
-      <Tooltip formatter={(v: number) => inr(v)} />
+      <Tooltip
+  formatter={(value) =>
+    typeof value === "number" ? inr(value) : String(value)
+  }
+/>
       <Legend />
       <Line type="monotone" dataKey="value" stroke={color} strokeWidth={2} name={name} dot={false} />
     </LineChart>
