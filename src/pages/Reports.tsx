@@ -189,7 +189,7 @@ export const Reports: React.FC = () => {
         {tab === 'sales' && (
           <>
             {/* Empty-ledger notice — the sales ledger only holds imported/third-party sales. */}
-            {!salesReq.loading && (salesReq.data?.meta.total ?? 0) === 0 && (
+            {!salesReq.loading && (salesReq.data?.meta?.total ?? 0) === 0 && (
               <div className="card mb-6 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950">
                 <h4 className="font-semibold text-blue-800 dark:text-blue-200">
                   No imported sales yet
