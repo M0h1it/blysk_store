@@ -18,49 +18,81 @@ function readBody(req) {
 
 export default async function handler(req, res) {
   try {
+    // Get path from rewrite
     const raw = req.query.__path;
     const path = Array.isArray(raw) ? raw.join("/") : raw || "";
 
+    // Preserve query parameters
     const query = { ...req.query };
     delete query.__path;
 
     const qs = new URLSearchParams(query).toString();
 
-    const url = `${BACKEND}/api/${path}${qs ? `?${qs}` : ""}`;
+    const target = `${BACKEND}/api/${path}${qs ? `?${qs}` : ""}`;
 
-    const headers = { ...req.headers };
+    // Copy request headers
+    const headers = {};
 
-    delete headers.host;
-    delete headers.origin;
-    delete headers.referer;
-    delete headers["content-length"];
-    delete headers["accept-encoding"];
+    Object.keys(req.headers).forEach((key) => {
+      const lower = key.toLowerCase();
 
+      // Remove problematic headers
+      if (
+        lower === "host" ||
+        lower === "origin" ||
+        lower === "referer" ||
+        lower === "content-length" ||
+        lower === "accept-encoding"
+      ) {
+        return;
+      }
+
+      headers[key] = req.headers[key];
+    });
+
+    // Read request body
     let body;
 
     if (req.method !== "GET" && req.method !== "HEAD") {
       body = await readBody(req);
     }
 
-    const response = await fetch(url, {
+    // Forward request
+    const upstream = await fetch(target, {
       method: req.method,
       headers,
       body,
+      redirect: "follow",
     });
 
-    const data = Buffer.from(await response.arrayBuffer());
+    // Read response
+    const buffer = Buffer.from(await upstream.arrayBuffer());
 
-    res.status(response.status);
+    // Status
+    res.status(upstream.status);
 
-    response.headers.forEach((value, key) => {
+    // Copy headers except encoding headers
+    upstream.headers.forEach((value, key) => {
+      const lower = key.toLowerCase();
+
+      if (
+        lower === "content-encoding" ||
+        lower === "content-length" ||
+        lower === "transfer-encoding" ||
+        lower === "connection"
+      ) {
+        return;
+      }
+
       res.setHeader(key, value);
     });
 
-    res.send(data);
+    res.send(buffer);
   } catch (err) {
     console.error(err);
 
     res.status(500).json({
+      success: false,
       message: err.message,
     });
   }
