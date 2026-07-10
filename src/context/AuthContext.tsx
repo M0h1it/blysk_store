@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { AuthContextType } from '../types';
-import { login as loginRequest } from '../api/services';
+import { loginOnce as loginRequest } from '../api/services';
 import { STORAGE_KEYS, AUTH_LOGOUT_EVENT, API_AUTH_CREDENTIALS } from '../api/config';
 import type { ApiError } from '../api/client';
 

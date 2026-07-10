@@ -1,12 +1,20 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, STORAGE_KEYS, AUTH_LOGOUT_EVENT } from './config';
+
+/** Config flag so a request is only auto-retried once after a 429. */
+type RetryConfig = InternalAxiosRequestConfig & { _retried429?: boolean };
+
+/** How long we're willing to auto-wait on a 429 before giving up (seconds). */
+const MAX_RETRY_WAIT_S = 60;
+
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 /**
  * Shared axios instance pointed at the Blysk Admin API base URL.
  *
  * - A request interceptor attaches the Bearer token from localStorage.
- * - A response interceptor clears the session and emits `blysk:auth-logout`
- *   on a 401 so the UI can bounce back to the login screen.
+ * - A response interceptor: on 429 it waits out the server's Retry-After and
+ *   retries once; on 401 it clears the session and emits `blysk:auth-logout`.
  */
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -25,7 +33,21 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
+    const config = error.config as RetryConfig | undefined;
+
+    // Rate limited: honor Retry-After (capped) and retry the request once.
+    if (error.response?.status === 429 && config && !config._retried429) {
+      const headers = error.response.headers as Record<string, string>;
+      const retryAfter =
+        Number(headers['retry-after']) ||
+        Number(headers['ratelimit-reset']) ||
+        5;
+      config._retried429 = true;
+      await sleep(Math.min(retryAfter, MAX_RETRY_WAIT_S) * 1000);
+      return apiClient(config);
+    }
+
     if (error.response?.status === 401) {
       // Token missing/expired — drop the session and let the app react.
       localStorage.removeItem(STORAGE_KEYS.token);
@@ -44,9 +66,17 @@ export interface ApiError {
 
 function normalizeError(error: AxiosError): ApiError {
   const status = error.response?.status;
-  const data = error.response?.data as { message?: string; error?: string } | undefined;
+  const data = error.response?.data as
+    | { message?: string; error?: string | { code?: string; message?: string } }
+    | undefined;
 
-  let message = data?.message || data?.error || error.message;
+  // The API returns errors as { error: { code, message } }, so `error` may be an
+  // object — never assign it straight to `message` or React will crash (#31).
+  const errField = data?.error;
+  let message =
+    data?.message ||
+    (typeof errField === 'string' ? errField : errField?.message) ||
+    error.message;
 
   // Friendlier defaults for the documented status codes.
   switch (status) {

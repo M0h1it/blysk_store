@@ -30,6 +30,20 @@ export async function login(email: string, password: string): Promise<LoginRespo
   return data;
 }
 
+// Coalesce concurrent logins: if a login is already in flight, every caller
+// awaits the same request instead of firing another (protects the 5/min limit).
+let loginInFlight: Promise<LoginResponse> | null = null;
+
+/** Login that de-duplicates simultaneous calls into a single network request. */
+export function loginOnce(email: string, password: string): Promise<LoginResponse> {
+  if (!loginInFlight) {
+    loginInFlight = login(email, password).finally(() => {
+      loginInFlight = null;
+    });
+  }
+  return loginInFlight;
+}
+
 /* ------------------------------------------------------------------ */
 /* API 2 — Stores                                                      */
 /* ------------------------------------------------------------------ */
