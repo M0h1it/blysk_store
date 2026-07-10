@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://admin.blyskjewels.com/api/:path*"
+    }
+  ]
+}
