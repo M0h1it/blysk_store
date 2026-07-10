@@ -1,21 +1,20 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, STORAGE_KEYS, AUTH_LOGOUT_EVENT } from './config';
 
-/** Config flag so a request is only auto-retried once after a 429. */
-type RetryConfig = InternalAxiosRequestConfig & { _retried429?: boolean };
+/** Config flag so a request is only auto-retried a limited number of times. */
+type RetryConfig = InternalAxiosRequestConfig & { _retryCount?: number };
+
+/** Max auto-retries for a transient failure. */
+const MAX_RETRIES = 2;
 
 /** How long we're willing to auto-wait on a 429 before giving up (seconds). */
 const MAX_RETRY_WAIT_S = 60;
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-/**
- * Shared axios instance pointed at the Blysk Admin API base URL.
- *
- * - A request interceptor attaches the Bearer token from localStorage.
- * - A response interceptor: on 429 it waits out the server's Retry-After and
- *   retries once; on 401 it clears the session and emits `blysk:auth-logout`.
- */
+/** Statuses worth retrying: rate limit + transient server errors. */
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
@@ -35,21 +34,29 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const config = error.config as RetryConfig | undefined;
+    const status = error.response?.status;
+    const attempt = config?._retryCount ?? 0;
 
-    // Rate limited: honor Retry-After (capped) and retry the request once.
-    if (error.response?.status === 429 && config && !config._retried429) {
-      const headers = error.response.headers as Record<string, string>;
-      const retryAfter =
-        Number(headers['retry-after']) ||
-        Number(headers['ratelimit-reset']) ||
-        5;
-      config._retried429 = true;
-      await sleep(Math.min(retryAfter, MAX_RETRY_WAIT_S) * 1000);
+    // Retry rate limits (429) and transient server errors (500/502/503/504).
+    // Login is idempotent, so retrying it is safe.
+    if (config && status && RETRYABLE.has(status) && attempt < MAX_RETRIES) {
+      config._retryCount = attempt + 1;
+
+      let waitS: number;
+      if (status === 429) {
+        const headers = error.response!.headers as Record<string, string>;
+        const retryAfter =
+          Number(headers['retry-after']) || Number(headers['ratelimit-reset']) || 5;
+        waitS = Math.min(retryAfter, MAX_RETRY_WAIT_S);
+      } else {
+        waitS = Math.min(2 ** attempt, 5); // 1s, 2s backoff for transient 5xx
+      }
+
+      await sleep(waitS * 1000);
       return apiClient(config);
     }
 
-    if (error.response?.status === 401) {
-      // Token missing/expired — drop the session and let the app react.
+    if (status === 401) {
       localStorage.removeItem(STORAGE_KEYS.token);
       localStorage.removeItem(STORAGE_KEYS.user);
       window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
@@ -70,15 +77,12 @@ function normalizeError(error: AxiosError): ApiError {
     | { message?: string; error?: string | { code?: string; message?: string } }
     | undefined;
 
-  // The API returns errors as { error: { code, message } }, so `error` may be an
-  // object — never assign it straight to `message` or React will crash (#31).
   const errField = data?.error;
   let message =
     data?.message ||
     (typeof errField === 'string' ? errField : errField?.message) ||
     error.message;
 
-  // Friendlier defaults for the documented status codes.
   switch (status) {
     case 401:
       message = 'Session expired or not authorized. Please log in again.';
