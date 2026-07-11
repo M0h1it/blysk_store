@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { AuthContextType } from '../types';
 import { loginOnce as loginRequest } from '../api/services';
-import { STORAGE_KEYS, AUTH_LOGOUT_EVENT, API_AUTH_CREDENTIALS } from '../api/config';
+import { STORAGE_KEYS, AUTH_LOGOUT_EVENT } from '../api/config';
 import type { ApiError } from '../api/client';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -62,13 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      try {
-        await authenticate(API_AUTH_CREDENTIALS.email, API_AUTH_CREDENTIALS.password);
-      } catch (err) {
-        if (!cancelled) setAuthError(toErrorMessage(err));
-      } finally {
-        if (!cancelled) setInitializing(false);
-      }
+      if (!cancelled) setInitializing(false);
     };
 
     init();
